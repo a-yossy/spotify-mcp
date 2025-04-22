@@ -16,6 +16,7 @@ use spotify_mcp::{
     },
 };
 use sqlx::MySqlPool;
+mod constant;
 
 #[derive(Deserialize, JsonSchema)]
 struct SearchQuery {
@@ -328,13 +329,14 @@ impl ArtistSearch {
         #[tool(aggr)]
         InsertMusicSearchProgressQuery { music_genre_id }: InsertMusicSearchProgressQuery,
     ) -> Result<CallToolResult, McpError> {
-        let input = music_search_progress::UpsertInput::new(0);
+        let input =
+            music_search_progress::UpsertInput::new(constant::MUSIC_SEARCH_POSITION_INITIAL);
         let progress = MusicSearchProgress::upsert(&self.db_pool, music_genre_id, &input).await;
         match progress {
-            Ok(_) => {
+            Ok(progress) => {
                 let output = format!(
-                    "音楽ジャンルID: {} の音楽検索の進捗を登録しました",
-                    music_genre_id
+                    "音楽検索の進捗を登録しました\n音楽ジャンルID: {}\n現在の検索位置: {}",
+                    progress.music_genre_id, progress.position,
                 );
 
                 Ok(CallToolResult::success(vec![Content::text(output)]))
@@ -357,14 +359,16 @@ impl ArtistSearch {
             MusicSearchProgress::find_by_music_genre_id(&self.db_pool, music_genre_id).await;
         match music_search_progress {
             Ok(Some(progress)) => {
-                let input = music_search_progress::UpsertInput::new(progress.position + 1);
+                let input = music_search_progress::UpsertInput::new(
+                    progress.position + constant::MUSIC_SEARCH_FETCH_LIMIT,
+                );
                 let progress =
                     MusicSearchProgress::upsert(&self.db_pool, music_genre_id, &input).await;
                 match progress {
-                    Ok(_) => {
+                    Ok(progress) => {
                         let output = format!(
-                            "音楽ジャンルID: {} の音楽検索の進捗を更新しました",
-                            music_genre_id
+                            "音楽検索の進捗を更新しました\n音楽ジャンルID: {}\n現在の検索位置: {}",
+                            progress.music_genre_id, progress.position,
                         );
 
                         return Ok(CallToolResult::success(vec![Content::text(output)]));
