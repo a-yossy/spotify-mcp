@@ -12,7 +12,7 @@ use spotify_mcp::{
     infrastructure::database::get_pool,
     model::{
         excluded_artist::{ExcludedArtist, InsertInput},
-        music_search_progress::MusicSearchProgress,
+        music_search_progress::{self, MusicSearchProgress},
     },
 };
 use sqlx::MySqlPool;
@@ -57,6 +57,18 @@ struct InsertExcludedArtistQuery {
 
 #[derive(Deserialize, JsonSchema)]
 struct MusicSearchProgressQuery {
+    #[schemars(description = "音楽ジャンルID")]
+    music_genre_id: u32,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct InsertMusicSearchProgressQuery {
+    #[schemars(description = "音楽ジャンルID")]
+    music_genre_id: u32,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct UpdateMusicSearchProgressQuery {
     #[schemars(description = "音楽ジャンルID")]
     music_genre_id: u32,
 }
@@ -307,6 +319,77 @@ impl ArtistSearch {
                 format!("音楽検索の進捗の取得に失敗しました,{}", e),
                 None,
             )),
+        }
+    }
+
+    #[tool(description = "音楽検索の進捗を登録します")]
+    async fn insert_music_search_progress(
+        &self,
+        #[tool(aggr)]
+        InsertMusicSearchProgressQuery { music_genre_id }: InsertMusicSearchProgressQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let input = music_search_progress::UpsertInput::new(0);
+        let progress = MusicSearchProgress::upsert(&self.db_pool, music_genre_id, &input).await;
+        match progress {
+            Ok(_) => {
+                let output = format!(
+                    "音楽ジャンルID: {} の音楽検索の進捗を登録しました",
+                    music_genre_id
+                );
+
+                Ok(CallToolResult::success(vec![Content::text(output)]))
+            }
+            Err(e) => Err(McpError::new(
+                ErrorCode::INTERNAL_ERROR,
+                format!("音楽検索の進捗の登録に失敗しました,{}", e),
+                None,
+            )),
+        }
+    }
+
+    #[tool(description = "音楽検索の進捗を更新します")]
+    async fn update_music_search_progress(
+        &self,
+        #[tool(aggr)]
+        UpdateMusicSearchProgressQuery { music_genre_id }: UpdateMusicSearchProgressQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let music_search_progress =
+            MusicSearchProgress::find_by_music_genre_id(&self.db_pool, music_genre_id).await;
+        match music_search_progress {
+            Ok(Some(progress)) => {
+                let input = music_search_progress::UpsertInput::new(progress.position + 1);
+                let progress =
+                    MusicSearchProgress::upsert(&self.db_pool, music_genre_id, &input).await;
+                match progress {
+                    Ok(_) => {
+                        let output = format!(
+                            "音楽ジャンルID: {} の音楽検索の進捗を更新しました",
+                            music_genre_id
+                        );
+
+                        return Ok(CallToolResult::success(vec![Content::text(output)]));
+                    }
+                    Err(e) => {
+                        return Err(McpError::new(
+                            ErrorCode::INTERNAL_ERROR,
+                            format!("音楽検索の進捗の更新に失敗しました,{}", e),
+                            None,
+                        ));
+                    }
+                }
+            }
+            Ok(None) => {
+                return Ok(CallToolResult::success(vec![Content::text(
+                    "音楽検索の進捗が見つかりません",
+                )]));
+            }
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("音楽検索の進捗の取得に失敗しました,{}", e),
+                    None,
+                ));
+            }
         }
     }
 }
