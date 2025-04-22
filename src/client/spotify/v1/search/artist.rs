@@ -52,12 +52,38 @@ pub struct Image {
     pub width: u32,
 }
 
-pub async fn get(access_token: &str, genre: &str) -> Result<ArtistsResponse> {
+pub struct GetQuery {
+    pub offset: Option<u32>,
+    pub limit: Option<u32>,
+    pub genre: Option<String>,
+}
+
+pub async fn get(access_token: &str, query: &GetQuery) -> Result<ArtistsResponse> {
     let client = Client::new();
     let response = client
         .get("https://api.spotify.com/v1/search")
         .bearer_auth(access_token)
-        .query(&[("type", "artist"), ("q", &format!("genre:{}", genre))])
+        .query(&[
+            ("type", "artist"),
+            (
+                "q",
+                &format!("genre:{}", query.genre.as_deref().unwrap_or(""),),
+            ),
+            (
+                "offset",
+                &query
+                    .offset
+                    .map(|offset| offset.to_string())
+                    .unwrap_or_else(|| String::new()),
+            ),
+            (
+                "limit",
+                &query
+                    .limit
+                    .map(|limit| limit.to_string())
+                    .unwrap_or_else(|| String::new()),
+            ),
+        ])
         .send()
         .await?
         .json::<ArtistsResponse>()

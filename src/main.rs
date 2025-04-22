@@ -22,6 +22,8 @@ mod constant;
 struct SearchQuery {
     #[schemars(description = "ジャンル")]
     genre: String,
+    #[schemars(description = "現在の検索位置")]
+    position: u32,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -88,7 +90,7 @@ impl ArtistSearch {
     #[tool(description = "アーティストを検索します")]
     async fn search(
         &self,
-        #[tool(aggr)] SearchQuery { genre }: SearchQuery,
+        #[tool(aggr)] SearchQuery { genre, position }: SearchQuery,
     ) -> Result<CallToolResult, McpError> {
         let access_token = match spotify::api::token::post().await {
             Ok(token) => token,
@@ -100,7 +102,12 @@ impl ArtistSearch {
                 ));
             }
         };
-        let response = spotify::v1::search::artist::get(&access_token, &genre)
+        let query = spotify::v1::search::artist::GetQuery {
+            offset: Some(position),
+            limit: Some(constant::MUSIC_SEARCH_FETCH_LIMIT),
+            genre: Some(genre.clone()),
+        };
+        let response = spotify::v1::search::artist::get(&access_token, &query)
             .await
             .unwrap();
         let artists = response.artists.items;
