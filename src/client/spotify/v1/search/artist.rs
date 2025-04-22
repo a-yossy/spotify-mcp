@@ -1,0 +1,67 @@
+use anyhow::Result;
+use reqwest::Client;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct ArtistsResponse {
+    pub artists: ArtistsPage,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ArtistsPage {
+    pub href: String,
+    pub limit: u32,
+    pub next: Option<String>,
+    pub offset: u32,
+    pub previous: Option<String>,
+    pub total: u32,
+    pub items: Vec<Artist>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Artist {
+    pub external_urls: ExternalUrls,
+    pub followers: Followers,
+    pub genres: Vec<String>,
+    pub href: String,
+    pub id: String,
+    pub images: Vec<Image>,
+    pub name: String,
+    pub popularity: u32,
+
+    #[serde(rename = "type")]
+    pub artist_type: String,
+    pub uri: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExternalUrls {
+    pub spotify: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Followers {
+    pub href: Option<String>,
+    pub total: u32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Image {
+    pub url: String,
+    pub height: u32,
+    pub width: u32,
+}
+
+pub async fn get(access_token: &str, genre: &str) -> Result<ArtistsResponse> {
+    let client = Client::new();
+    let response = client
+        .get("https://api.spotify.com/v1/search")
+        .bearer_auth(access_token)
+        .query(&[("type", "artist"), ("q", &format!("genre:{}", genre))])
+        .send()
+        .await?
+        .json::<ArtistsResponse>()
+        .await?;
+
+    Ok(response)
+}

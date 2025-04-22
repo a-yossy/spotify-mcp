@@ -1,3 +1,286 @@
-fn main() {
-    println!("Hello, world!");
+use anyhow::Result;
+use rmcp::{
+    Error as McpError, ServerHandler, ServiceExt,
+    model::{CallToolResult, Content, ErrorCode},
+    tool,
+    transport::stdio,
+};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use spotify_mcp::{
+    client::spotify,
+    infrastructure::database::get_pool,
+    model::excluded_artist::{ExcludedArtist, InsertInput},
+};
+use sqlx::MySqlPool;
+
+#[derive(Deserialize, JsonSchema)]
+struct SearchQuery {
+    #[schemars(description = "ジャンル")]
+    genre: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct IsFollowingQuery {
+    #[schemars(description = "アーティストIDの配列")]
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct PlayQuery {
+    #[schemars(description = "URI")]
+    context_uri: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct FollowQuery {
+    #[schemars(description = "アーティストID")]
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct GetExcludedArtistsByIdsQuery {
+    #[schemars(description = "アーティストIDの配列")]
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct InsertExcludedArtistQuery {
+    #[schemars(description = "アーティストID")]
+    id: String,
+    #[schemars(description = "アーティスト名")]
+    name: String,
+}
+
+#[derive(Clone)]
+struct ArtistSearch {
+    db_pool: MySqlPool,
+}
+
+#[tool(tool_box)]
+impl ArtistSearch {
+    pub fn new(db_pool: MySqlPool) -> Self {
+        Self { db_pool }
+    }
+
+    #[tool(description = "アーティストを検索します")]
+    async fn search(
+        &self,
+        #[tool(aggr)] SearchQuery { genre }: SearchQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let access_token = match spotify::api::token::post().await {
+            Ok(token) => token,
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("アクセストークンの取得に失敗しました,{}", e),
+                    None,
+                ));
+            }
+        };
+        let response = spotify::v1::search::artist::get(&access_token, &genre)
+            .await
+            .unwrap();
+        let artists = response.artists.items;
+        let output = if artists.is_empty() {
+            format!(
+                "ジャンル '{}' に一致するアーティストが見つかりませんでした。",
+                genre
+            )
+        } else {
+            let mut output = format!("ジャンル '{}' の検索結果:\n\n", genre);
+            for artist in artists {
+                output.push_str(&format!(
+                    "アーティストID: {}\nアーティスト名: {}\nジャンル: {}\nURI: {}\n",
+                    artist.id,
+                    artist.name,
+                    artist.genres.join(","),
+                    artist.uri
+                ));
+            }
+
+            output
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[tool(description = "アーティストをフォローしているか判定します")]
+    async fn is_following(
+        &self,
+        #[tool(aggr)] IsFollowingQuery { ids }: IsFollowingQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let access_token = match spotify::api::token::post().await {
+            Ok(token) => token,
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("アクセストークンの取得に失敗しました,{}", e),
+                    None,
+                ));
+            }
+        };
+        let response = spotify::v1::me::following::contains::get(
+            &access_token,
+            spotify::v1::me::following::contains::Type::Artist,
+            &ids,
+        )
+        .await
+        .unwrap();
+        let mut output = format!("アーティストのフォロー状況:\n");
+        for item in response {
+            output.push_str(&format!(
+                "{}\n",
+                match item {
+                    true => "フォロー済み",
+                    false => "未フォロー",
+                }
+            ));
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[tool(description = "曲を再生します")]
+    async fn play(
+        &self,
+        #[tool(aggr)] PlayQuery { context_uri }: PlayQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let access_token = match spotify::api::token::post().await {
+            Ok(token) => token,
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("アクセストークンの取得に失敗しました,{}", e),
+                    None,
+                ));
+            }
+        };
+        let response = spotify::v1::me::player::play::put(&access_token, &context_uri).await;
+        let output = match response {
+            Ok(_) => "曲を再生しました",
+            Err(_) => "曲の再生に失敗しました",
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[tool(description = "アーティストをフォローします")]
+    async fn follow(
+        &self,
+        #[tool(aggr)] FollowQuery { ids }: FollowQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let access_token = match spotify::api::token::post().await {
+            Ok(token) => token,
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("アクセストークンの取得に失敗しました,{}", e),
+                    None,
+                ));
+            }
+        };
+        let response = spotify::v1::me::following::put(
+            &access_token,
+            spotify::v1::me::following::PutType::Artist,
+            &ids,
+        )
+        .await;
+        let output = match response {
+            Ok(_) => "アーティストをフォローしました",
+            Err(_) => "アーティストのフォローに失敗しました",
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[tool(description = "除外されているアーティストのリストを取得します")]
+    async fn get_excluded_artists_by_ids(
+        &self,
+        #[tool(aggr)] GetExcludedArtistsByIdsQuery { ids }: GetExcludedArtistsByIdsQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let excluded_artists = ExcludedArtist::find_by_ids(&self.db_pool, &ids).await;
+        let mut output = format!("除外されているアーティスト:\n");
+        match excluded_artists {
+            Ok(excluded_artists) => {
+                for excluded_artist in &excluded_artists {
+                    output.push_str(&format!(
+                        "アーティストID: {}\nアーティスト名: {}\n",
+                        excluded_artist.id, excluded_artist.name
+                    ));
+                }
+            }
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("除外されているアーティストの取得に失敗しました ,{}", e),
+                    None,
+                ));
+            }
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[tool(description = "アーティストを除外リストに登録します")]
+    async fn insert_excluded_artist(
+        &self,
+        #[tool(aggr)] InsertExcludedArtistQuery { id, name }: InsertExcludedArtistQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let input = InsertInput::new(id, name);
+        let excluded_artist = ExcludedArtist::insert(&self.db_pool, &input).await;
+        let output;
+        match excluded_artist {
+            Ok(_) => {
+                output = "アーティストを除外リストに登録しました";
+            }
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("アーティストを除外リストに登録するのに失敗しました ,{}", e),
+                    None,
+                ));
+            }
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[tool(description = "音楽ジャンル一覧を取得します")]
+    async fn get_music_genres(&self) -> Result<CallToolResult, McpError> {
+        use spotify_mcp::model::music_genre::MusicGenre;
+        let genres = MusicGenre::find_all(&self.db_pool).await;
+        let mut output = String::from("音楽ジャンル:\n");
+        match genres {
+            Ok(genres) => {
+                for genre in genres {
+                    output.push_str(&format!(
+                        "ID: {}\nジャンル名: {}\n検索キー: {}\n\n",
+                        genre.id, genre.name, genre.search_key
+                    ));
+                }
+            }
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("音楽ジャンル一覧の取得に失敗しました,{}", e),
+                    None,
+                ));
+            }
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+}
+
+#[tool(tool_box)]
+impl ServerHandler for ArtistSearch {}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let db_pool = get_pool().await?;
+    let service = ArtistSearch::new(db_pool).serve(stdio()).await?;
+    service.waiting().await?;
+
+    Ok(())
 }
