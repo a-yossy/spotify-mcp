@@ -10,7 +10,10 @@ use serde::Deserialize;
 use spotify_mcp::{
     client::spotify,
     infrastructure::database::get_pool,
-    model::excluded_artist::{ExcludedArtist, InsertInput},
+    model::{
+        excluded_artist::{ExcludedArtist, InsertInput},
+        music_search_progress::MusicSearchProgress,
+    },
 };
 use sqlx::MySqlPool;
 
@@ -50,6 +53,12 @@ struct InsertExcludedArtistQuery {
     id: String,
     #[schemars(description = "アーティスト名")]
     name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MusicSearchProgressQuery {
+    #[schemars(description = "音楽ジャンルID")]
+    music_genre_id: u32,
 }
 
 #[derive(Clone)]
@@ -270,6 +279,35 @@ impl ArtistSearch {
         }
 
         Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[tool(description = "音楽検索の進捗を取得します")]
+    async fn get_music_search_progress(
+        &self,
+        #[tool(aggr)] MusicSearchProgressQuery { music_genre_id }: MusicSearchProgressQuery,
+    ) -> Result<CallToolResult, McpError> {
+        let progress =
+            MusicSearchProgress::find_by_music_genre_id(&self.db_pool, music_genre_id).await;
+        match progress {
+            Ok(progress) => {
+                let output = match progress {
+                    Some(progress) => {
+                        format!(
+                            "音楽ジャンルID: {}\n現在の検索位置: {}",
+                            progress.music_genre_id, progress.position,
+                        )
+                    }
+                    None => "音楽検索の進捗が見つかりません".to_string(),
+                };
+
+                Ok(CallToolResult::success(vec![Content::text(output)]))
+            }
+            Err(e) => Err(McpError::new(
+                ErrorCode::INTERNAL_ERROR,
+                format!("音楽検索の進捗の取得に失敗しました,{}", e),
+                None,
+            )),
+        }
     }
 }
 

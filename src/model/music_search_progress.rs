@@ -13,7 +13,7 @@ impl MusicSearchProgress {
     pub async fn find_by_music_genre_id(
         db_pool: &sqlx::MySqlPool,
         music_genre_id: u32,
-    ) -> Result<Self> {
+    ) -> Result<Option<Self>> {
         let result = sqlx::query_as!(
             MusicSearchProgress,
             r#"
@@ -26,7 +26,7 @@ impl MusicSearchProgress {
             "#,
             music_genre_id
         )
-        .fetch_one(db_pool)
+        .fetch_optional(db_pool)
         .await?;
 
         Ok(result)
