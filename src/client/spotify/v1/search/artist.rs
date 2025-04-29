@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct ArtistsResponse {
+pub struct GetResponse {
     pub artists: ArtistsPage,
 }
 
@@ -59,36 +59,36 @@ pub struct GetQuery {
     pub genre: Option<String>,
 }
 
-pub async fn get(access_token: &str, query: &GetQuery) -> Result<ArtistsResponse> {
+pub async fn get(access_token: &str, query: &GetQuery) -> Result<GetResponse> {
     let client = Client::new();
-    let response = client
+    let query = &[
+        ("type", "artist"),
+        (
+            "q",
+            &format!("genre:{}", query.genre.as_deref().unwrap_or(""),),
+        ),
+        (
+            "offset",
+            &query
+                .offset
+                .map(|offset| offset.to_string())
+                .unwrap_or_else(|| String::new()),
+        ),
+        (
+            "limit",
+            &query
+                .limit
+                .map(|limit| limit.to_string())
+                .unwrap_or_else(|| String::new()),
+        ),
+    ];
+
+    Ok(client
         .get(&format!("{}/v1/search", API_BASE_URL))
         .bearer_auth(access_token)
-        .query(&[
-            ("type", "artist"),
-            (
-                "q",
-                &format!("genre:{}", query.genre.as_deref().unwrap_or(""),),
-            ),
-            (
-                "offset",
-                &query
-                    .offset
-                    .map(|offset| offset.to_string())
-                    .unwrap_or_else(|| String::new()),
-            ),
-            (
-                "limit",
-                &query
-                    .limit
-                    .map(|limit| limit.to_string())
-                    .unwrap_or_else(|| String::new()),
-            ),
-        ])
+        .query(&query)
         .send()
         .await?
-        .json::<ArtistsResponse>()
-        .await?;
-
-    Ok(response)
+        .json::<GetResponse>()
+        .await?)
 }

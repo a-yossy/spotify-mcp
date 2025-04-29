@@ -31,9 +31,10 @@ pub async fn get(access_token: &str) -> Result<Vec<Artist>> {
     let mut after = Some(String::new());
     let client = Client::new();
     while let Some(now_after) = after {
+        let query = [("type", "artist"), ("after", &now_after)];
         let response = client
             .get(&format!("{}/v1/me/following", API_BASE_URL))
-            .query(&[("type", "artist"), ("after", &now_after)])
+            .query(&query)
             .bearer_auth(access_token)
             .send()
             .await?
@@ -57,6 +58,13 @@ pub enum PutType {
 
 pub async fn put(access_token: &str, r#type: PutType, ids: &[String]) -> Result<()> {
     let client = Client::new();
+    let query = &[(
+        "type",
+        match r#type {
+            PutType::Artist => "artist",
+            PutType::User => "user",
+        },
+    )];
     let body = serde_json::json!({
         "ids": ids
     });
@@ -64,13 +72,7 @@ pub async fn put(access_token: &str, r#type: PutType, ids: &[String]) -> Result<
         .put(&format!("{}/v1/me/following", API_BASE_URL))
         .bearer_auth(access_token)
         .header("Content-Type", "application/json")
-        .query(&[(
-            "type",
-            match r#type {
-                PutType::Artist => "artist",
-                PutType::User => "user",
-            },
-        )])
+        .query(&query)
         .json(&body)
         .send()
         .await?;
