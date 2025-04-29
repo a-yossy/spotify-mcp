@@ -9,6 +9,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use spotify_mcp::{
     client::spotify,
+    constant::music_search,
     infrastructure::database::get_pool,
     model::{
         excluded_artist::{ExcludedArtist, InsertInput},
@@ -16,7 +17,6 @@ use spotify_mcp::{
     },
 };
 use sqlx::MySqlPool;
-mod constant;
 
 #[derive(Deserialize, JsonSchema)]
 struct SearchQuery {
@@ -104,7 +104,7 @@ impl ArtistSearch {
         };
         let query = spotify::v1::search::artist::GetQuery {
             offset: Some(position),
-            limit: Some(constant::MUSIC_SEARCH_FETCH_LIMIT),
+            limit: Some(music_search::FETCH_LIMIT),
             genre: Some(genre.clone()),
         };
         let response = spotify::v1::search::artist::get(&access_token, &query)
@@ -336,8 +336,7 @@ impl ArtistSearch {
         #[tool(aggr)]
         InsertMusicSearchProgressQuery { music_genre_id }: InsertMusicSearchProgressQuery,
     ) -> Result<CallToolResult, McpError> {
-        let input =
-            music_search_progress::UpsertInput::new(constant::MUSIC_SEARCH_POSITION_INITIAL);
+        let input = music_search_progress::UpsertInput::new(music_search::INITIAL_POSITION);
         let progress = MusicSearchProgress::upsert(&self.db_pool, music_genre_id, &input).await;
         match progress {
             Ok(progress) => {
@@ -367,7 +366,7 @@ impl ArtistSearch {
         match music_search_progress {
             Ok(Some(progress)) => {
                 let input = music_search_progress::UpsertInput::new(
-                    progress.position + constant::MUSIC_SEARCH_FETCH_LIMIT,
+                    progress.position + music_search::FETCH_LIMIT,
                 );
                 let progress =
                     MusicSearchProgress::upsert(&self.db_pool, music_genre_id, &input).await;
