@@ -1,3 +1,4 @@
+use crate::constant::spotify::API_BASE_URL;
 use anyhow::Result;
 use reqwest::Client;
 
@@ -10,7 +11,7 @@ pub enum Type {
 pub async fn get(access_token: &str, r#type: Type, ids: &[String]) -> Result<ContainsResponse> {
     let client = Client::new();
     let response = client
-        .get("https://api.spotify.com/v1/me/following/contains")
+        .get(&format!("{}/v1/me/following/contains", API_BASE_URL))
         .query(&[
             (
                 "type",

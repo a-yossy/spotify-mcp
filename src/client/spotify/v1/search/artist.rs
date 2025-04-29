@@ -1,3 +1,4 @@
+use crate::constant::spotify::API_BASE_URL;
 use anyhow::Result;
 use reqwest::Client;
 use serde::Deserialize;
@@ -61,7 +62,7 @@ pub struct GetQuery {
 pub async fn get(access_token: &str, query: &GetQuery) -> Result<ArtistsResponse> {
     let client = Client::new();
     let response = client
-        .get("https://api.spotify.com/v1/search")
+        .get(&format!("{}/v1/search", API_BASE_URL))
         .bearer_auth(access_token)
         .query(&[
             ("type", "artist"),

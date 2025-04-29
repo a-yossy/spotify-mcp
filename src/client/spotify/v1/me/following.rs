@@ -1,5 +1,6 @@
 pub mod contains;
 
+use crate::constant::spotify::API_BASE_URL;
 use anyhow::Result;
 use reqwest::Client;
 use serde::Deserialize;
@@ -31,7 +32,7 @@ pub async fn get(access_token: &str) -> Result<Vec<Artist>> {
     let client = Client::new();
     while let Some(now_after) = after {
         let response = client
-            .get("https://api.spotify.com/v1/me/following")
+            .get(&format!("{}/v1/me/following", API_BASE_URL))
             .query(&[("type", "artist"), ("after", &now_after)])
             .bearer_auth(access_token)
             .send()
@@ -60,7 +61,7 @@ pub async fn put(access_token: &str, r#type: PutType, ids: &[String]) -> Result<
         "ids": ids
     });
     client
-        .put("https://api.spotify.com/v1/me/following")
+        .put(&format!("{}/v1/me/following", API_BASE_URL))
         .bearer_auth(access_token)
         .header("Content-Type", "application/json")
         .query(&[(

@@ -1,10 +1,11 @@
+use crate::constant::spotify::API_BASE_URL;
 use anyhow::Result;
 use base64::prelude::*;
 use reqwest::Client;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct TokenResponse {
+struct PostResponse {
     access_token: String,
 }
 
@@ -20,13 +21,13 @@ pub async fn post() -> Result<String> {
     let client = Client::new();
 
     Ok(client
-        .post("https://accounts.spotify.com/api/token")
+        .post(&format!("{}/api/token", API_BASE_URL))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("Authorization", format!("Basic {}", authorization))
         .form(&params)
         .send()
         .await?
-        .json::<TokenResponse>()
+        .json::<PostResponse>()
         .await?
         .access_token)
 }
