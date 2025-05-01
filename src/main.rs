@@ -93,7 +93,7 @@ impl ArtistSearch {
         #[tool(aggr)] SearchQuery { genre, position }: SearchQuery,
     ) -> Result<CallToolResult, McpError> {
         let access_token = match spotify::api::token::post().await {
-            Ok(token) => token,
+            Ok(response) => response.access_token,
             Err(e) => {
                 return Err(McpError::new(
                     ErrorCode::INTERNAL_ERROR,
@@ -107,10 +107,16 @@ impl ArtistSearch {
             limit: Some(music_search::FETCH_LIMIT),
             genre: Some(genre.clone()),
         };
-        let response = spotify::v1::search::artist::get(&access_token, &query)
-            .await
-            .unwrap();
-        let artists = response.artists.items;
+        let artists = match spotify::v1::search::artist::get(&access_token, &query).await {
+            Ok(response) => response.artists.items,
+            Err(e) => {
+                return Err(McpError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("アーティストの検索に失敗しました,{}", e),
+                    None,
+                ));
+            }
+        };
         let output = if artists.is_empty() {
             format!(
                 "ジャンル '{}' に一致するアーティストが見つかりませんでした。",
@@ -140,7 +146,7 @@ impl ArtistSearch {
         #[tool(aggr)] IsFollowingQuery { ids }: IsFollowingQuery,
     ) -> Result<CallToolResult, McpError> {
         let access_token = match spotify::api::token::post().await {
-            Ok(token) => token,
+            Ok(response) => response.access_token,
             Err(e) => {
                 return Err(McpError::new(
                     ErrorCode::INTERNAL_ERROR,
@@ -176,7 +182,7 @@ impl ArtistSearch {
         #[tool(aggr)] PlayQuery { context_uri }: PlayQuery,
     ) -> Result<CallToolResult, McpError> {
         let access_token = match spotify::api::token::post().await {
-            Ok(token) => token,
+            Ok(response) => response.access_token,
             Err(e) => {
                 return Err(McpError::new(
                     ErrorCode::INTERNAL_ERROR,
@@ -200,7 +206,7 @@ impl ArtistSearch {
         #[tool(aggr)] FollowQuery { ids }: FollowQuery,
     ) -> Result<CallToolResult, McpError> {
         let access_token = match spotify::api::token::post().await {
-            Ok(token) => token,
+            Ok(response) => response.access_token,
             Err(e) => {
                 return Err(McpError::new(
                     ErrorCode::INTERNAL_ERROR,

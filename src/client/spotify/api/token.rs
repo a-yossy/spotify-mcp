@@ -4,11 +4,11 @@ use reqwest::Client;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct PostResponse {
-    access_token: String,
+pub struct PostResponse {
+    pub access_token: String,
 }
 
-pub async fn post() -> Result<String> {
+pub async fn post() -> Result<PostResponse> {
     let refresh_token = env!("SPOTIFY_REFRESH_TOKEN");
     let params = [
         ("grant_type", "refresh_token"),
@@ -27,6 +27,5 @@ pub async fn post() -> Result<String> {
         .send()
         .await?
         .json::<PostResponse>()
-        .await?
-        .access_token)
+        .await?)
 }
